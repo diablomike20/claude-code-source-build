@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { builtinModules } from 'node:module';
 import { spawnSync } from 'node:child_process';
@@ -17,7 +18,7 @@ const featureManifestName = 'claude-feature-manifest.json';
 const workspaceRoot = path.join(versionRoot, '.cache', 'workspace');
 const markerPath = path.join(workspaceRoot, '.prepared.json');
 const overlayStampPath = path.join(workspaceRoot, '.overlay-install.json');
-const builderVersion = 8;
+const builderVersion = 9;
 
 const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.cjs'];
 const assetExtensions = ['.md', '.txt'];
@@ -81,6 +82,8 @@ const baseOverlayDependencyPackages = [
   'bidi-js',
   'chalk',
   'chokidar',
+  'ws',
+  '@aws-crypto/sha256-js',
   'code-excerpt',
   'detect-libc',
   'diff',
@@ -192,7 +195,7 @@ function main() {
     return;
   }
 
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 15; attempt += 1) {
     prepareWorkspace(getOverlayPackages());
     const audit = configureBrahmaBundleFeatures();
     // This is a compilation manifest, not a claim that every runtime feature works.
@@ -257,32 +260,95 @@ function configureBrahmaBundleFeatures() {
   };
 }
 
+function auditReconstructedNativePackages() {
+  const report = {};
+  // No-op stubs must never be reported as functional native capabilities.
+  for (const packageName of unavailableOverlayPackages) {
+    if (packageName === 'src') continue;
+    const root = packageRootPath(path.join(workspaceRoot, 'node_modules'), packageName);
+    const files = isDirectory(root) ? walkFiles(root) : [];
+    const sources = files.filter(file => sourceExtensions.includes(path.extname(file)));
+    let stubbed = 0;
+    for (const file of sources) {
+      try {
+        const content = fs.readFileSync(file, 'utf8');
+        if (content.startsWith('// AUTO-STUB:') || content.includes('__makeStub(')) {
+          stubbed += 1;
+        }
+      } catch {
+        // Missing or unreadable source cannot count as an implemented feature.
+      }
+    }
+    report[packageName] = {
+      sourceFiles: sources.length,
+      stubbedFiles: stubbed,
+      state: sources.length === 0 ? 'unavailable'
+        : stubbed === 0 ? 'source-present-untested'
+        : stubbed < sources.length ? 'partially-stubbed' : 'stubbed',
+    };
+  }
+  return report;
+}
+
 function writeBrahmaFeatureManifest(audit, status) {
   const manifestPath = path.join(path.dirname(outputPath), featureManifestName);
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  fs.writeFileSync(manifestPath, JSON.stringify({ ...audit, buildStatus: status }, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(manifestPath, JSON.stringify({
+    ...audit,
+    buildStatus: status,
+    reconstructedNativePackages: auditReconstructedNativePackages(),
+    windowsNote: 'macOS-only Swift computer-use remains unavailable on Windows; Brahma MCP provides separate native Windows tools.',
+  }, null, 2) + '\n', 'utf8');
 }
 
 function getOverlayPackages() {
   return [...new Set([...baseOverlayDependencyPackages, ...extraOverlayPackages])].sort();
 }
 
+// Fail closed on absolute, drive-qualified, parent-traversing and symlinked paths.
+// Sources are untrusted reconstruction metadata, never filesystem destinations.
+function validatedWorkspaceDestination(relativePath) {
+  if (typeof relativePath !== 'string' || !relativePath ||
+      path.isAbsolute(relativePath) || path.win32.isAbsolute(relativePath) ||
+      relativePath.split(/[\\/]+/).includes('..') || relativePath.includes('\\\\')) {
+    throw new Error('Unsafe source-map path: ' + JSON.stringify(relativePath));
+  }
+  const base = path.resolve(workspaceRoot);
+  const target = path.resolve(base, relativePath);
+  const relative = path.relative(base, target);
+  if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+    throw new Error('Source-map extraction escaped workspace: ' + JSON.stringify(relativePath));
+  }
+  // Do not follow existing symlinks within the extraction path.
+  let cursor = base;
+  for (const part of relative.split(path.sep)) {
+    cursor = path.join(cursor, part);
+    try { if (fs.lstatSync(cursor).isSymbolicLink()) {
+      throw new Error('Source-map path traverses symlink: ' + JSON.stringify(relativePath));
+    } } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  return target;
+}
+
 function prepareWorkspace(overlayPackages) {
   const overlaySet = new Set(overlayPackages);
   const marker = readJsonIfExists(markerPath);
   const currentMapStat = fs.statSync(installedSourceMap);
+  const sourceMapBytes = fs.readFileSync(installedSourceMap);
+  const sourceMapSha256 = createHash('sha256').update(sourceMapBytes).digest('hex');
 
   if (
     marker &&
     marker.builderVersion === builderVersion &&
     marker.featureProfile === args.featureProfile &&
     marker.sourceMapMtimeMs === currentMapStat.mtimeMs &&
-    marker.sourceMapSize === currentMapStat.size
+    marker.sourceMapSize === currentMapStat.size &&
+    marker.sourceMapSha256 === sourceMapSha256
   ) {
     return;
   }
 
-  const sourceMap = JSON.parse(fs.readFileSync(installedSourceMap, 'utf8'));
+  const sourceMap = JSON.parse(sourceMapBytes.toString('utf8'));
   const keepPaths = new Set();
   fs.mkdirSync(workspaceRoot, { recursive: true });
 
@@ -298,7 +364,7 @@ function prepareWorkspace(overlayPackages) {
       continue;
     }
 
-    const destination = path.join(workspaceRoot, relativePath);
+    const destination = validatedWorkspaceDestination(relativePath);
     keepPaths.add(destination);
 
     fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -326,6 +392,7 @@ function prepareWorkspace(overlayPackages) {
         featureProfile: args.featureProfile,
         sourceMapMtimeMs: currentMapStat.mtimeMs,
         sourceMapSize: currentMapStat.size,
+        sourceMapSha256,
         version: packageJson.version,
       },
       null,
@@ -362,12 +429,19 @@ function ensureOverlayDependencies(packageNames) {
     '--legacy-peer-deps',
     ...packageNames,
   ];
-  const install = spawnSync('npm', installArgs, {
+  // npm is installed as npm.cmd on Windows. Node spawnSync cannot run a
+  // .cmd shim directly without a shell on modern Windows runtimes.
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const install = spawnSync(npmCommand, installArgs, {
     cwd: workspaceRoot,
     encoding: 'utf8',
+    shell: process.platform === 'win32',
     maxBuffer: 256 * 1024 * 1024,
   });
 
+  if (install.error) {
+    process.stderr.write(`Overlay npm process failed to start: ${install.error.message}\n`);
+  }
   if (install.status !== 0) {
     if (install.stdout) process.stdout.write(install.stdout);
     if (install.stderr) process.stderr.write(install.stderr);
@@ -756,7 +830,7 @@ function reconcileBuildErrors(stderrText) {
   let changed = false;
 
   for (const match of stderrText.matchAll(
-    /error: Could not resolve: "([^"]+)"[\s\S]*?\n\s+at ([^\n:]+):\d+:\d+/g,
+    /error: Could not resolve: "([^"]+)"[\s\S]*?\n\s+at ([^\r\n]+?):\d+:\d+/g,
   )) {
     const specifier = match[1];
     const importer = match[2];
