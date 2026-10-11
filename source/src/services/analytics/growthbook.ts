@@ -170,21 +170,35 @@ let envOverridesParsed = false
 function getEnvOverrides(): Record<string, unknown> | null {
   if (!envOverridesParsed) {
     envOverridesParsed = true
-    if (process.env.USER_TYPE === 'ant') {
-      const raw = process.env.CLAUDE_INTERNAL_FC_OVERRIDES
-      if (raw) {
-        try {
-          envOverrides = JSON.parse(raw) as Record<string, unknown>
-          logForDebugging(
-            `GrowthBook: Using env var overrides for ${Object.keys(envOverrides!).length} features: ${Object.keys(envOverrides!).join(', ')}`,
-          )
-        } catch {
-          logError(
-            new Error(
-              `GrowthBook: Failed to parse CLAUDE_INTERNAL_FC_OVERRIDES: ${raw}`,
-            ),
-          )
+    // JARVIS can provide runtime feature values locally without Anthropic
+    // feature-flag fetches or pretending to be an internal Anthropic account.
+    // The existing internal override is preserved for internal builds.
+    const raw =
+      process.env.BRAHMA_CLAUDE_FEATURE_OVERRIDES ??
+      (process.env.USER_TYPE === 'ant'
+        ? process.env.CLAUDE_INTERNAL_FC_OVERRIDES
+        : undefined)
+    if (raw) {
+      try {
+        const parsed: unknown = JSON.parse(raw)
+        if (
+          parsed === null ||
+          typeof parsed !== 'object' ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error('Expected a JSON object of feature-name/value pairs')
         }
+        envOverrides = parsed as Record<string, unknown>
+        logForDebugging(
+          `GrowthBook: Using locally supplied overrides for ${Object.keys(envOverrides).length} features`,
+        )
+      } catch (error) {
+        // Do not echo override values: a misconfigured JSON object could
+        // contain application secrets and should not enter error logs.
+        logError(
+          new Error('GrowthBook: Invalid local feature override JSON'),
+        )
+        envOverrides = null
       }
     }
   }
