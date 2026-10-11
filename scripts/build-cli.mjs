@@ -397,12 +397,19 @@ function ensureOverlayDependencies(packageNames) {
     '--legacy-peer-deps',
     ...packageNames,
   ];
-  const install = spawnSync('npm', installArgs, {
+  // npm is installed as npm.cmd on Windows. Node spawnSync cannot run a
+  // .cmd shim directly without a shell on modern Windows runtimes.
+  const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const install = spawnSync(npmCommand, installArgs, {
     cwd: workspaceRoot,
     encoding: 'utf8',
+    shell: process.platform === 'win32',
     maxBuffer: 256 * 1024 * 1024,
   });
 
+  if (install.error) {
+    process.stderr.write(`Overlay npm process failed to start: ${install.error.message}\n`);
+  }
   if (install.status !== 0) {
     if (install.stdout) process.stdout.write(install.stdout);
     if (install.stderr) process.stderr.write(install.stderr);
