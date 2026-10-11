@@ -85,11 +85,23 @@ their original behavior. Non-literal/dynamic flags also require follow-up audit.
 Before integrating a gated feature into JARVIS, verify the real underlying
 implementation, Windows support, permissions and network behavior individually.
 
-For a privacy-focused execution environment, the source already recognizes
-`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and `DISABLE_TELEMETRY=1`.
-The permitted OpenRouter API connection still needs network access. These
-settings reduce nonessential traffic but are not proof of zero unexpected
-network requests; network policy and runtime observation remain necessary.
+The generated JARVIS wrapper sets `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`,
+`DISABLE_TELEMETRY=1`, and `CLAUDE_CODE_ENABLE_TELEMETRY=0` by default
+when they are not already set in the environment. The permitted OpenRouter
+AI connection still needs network access. These settings suppress known
+nonessential traffic paths but are not proof of zero unexpected requests;
+network observation and an allowlist are still needed.
+
+Runtime GrowthBook feature values can be supplied by JARVIS independently
+of Anthropic remote configuration, for example:
+
+```bash
+BRAHMA_CLAUDE_FEATURE_OVERRIDES='{"example_experiment_key":true}' node dist/cli.js
+```
+
+Override keys and value types must be checked against the actual feature
+call sites. Do **not** indiscriminately override security restrictions or
+assume that turning on a gate supplies an absent native or server component.
 
 ## Native Addons
 
