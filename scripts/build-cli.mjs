@@ -13,10 +13,11 @@ const sourceRoot = path.join(versionRoot, 'source');
 const installedPackageJson = path.join(sourceRoot, 'package.json');
 const installedSourceMap = path.join(sourceRoot, 'cli.js.map');
 const defaultOutfile = path.join(versionRoot, 'dist', 'cli.js');
+const featureManifestName = 'claude-feature-manifest.json';
 const workspaceRoot = path.join(versionRoot, '.cache', 'workspace');
 const markerPath = path.join(workspaceRoot, '.prepared.json');
 const overlayStampPath = path.join(workspaceRoot, '.overlay-install.json');
-const builderVersion = 7;
+const builderVersion = 8;
 
 const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.cjs'];
 const assetExtensions = ['.md', '.txt'];
@@ -184,19 +185,31 @@ const enabledBundleFeatures = new Set([
 main();
 
 function main() {
+  if (args.listFeatures) {
+    prepareWorkspace(getOverlayPackages());
+    const audit = configureBrahmaBundleFeatures();
+    process.stdout.write(JSON.stringify(audit, null, 2) + '\n');
+    return;
+  }
+
   for (let attempt = 0; attempt < 6; attempt += 1) {
     prepareWorkspace(getOverlayPackages());
+    const audit = configureBrahmaBundleFeatures();
+    // This is a compilation manifest, not a claim that every runtime feature works.
+    writeBrahmaFeatureManifest(audit, 'building');
     ensureOverlayDependencies(getOverlayPackages());
     generateWorkspaceAugmentations();
 
     const buildResult = runBunBuild();
     if (buildResult.status === 0) {
       finalizeBuild();
+      writeBrahmaFeatureManifest(audit, 'built-not-runtime-tested');
       return;
     }
 
     const changed = reconcileBuildErrors(buildResult.stderr);
     if (!changed) {
+      writeBrahmaFeatureManifest(audit, 'build-failed');
       process.stdout.write(buildResult.stdout);
       process.stderr.write(buildResult.stderr);
       process.exit(buildResult.status ?? 1);
@@ -205,6 +218,49 @@ function main() {
 
   console.error('Build failed after exhausting retry attempts.');
   process.exit(1);
+}
+
+// JARVIS maximum profile: discover literal feature('FLAG') gates from the
+// reconstructed workspace. Preserve the normal four features as a baseline.
+// Dynamic gates, missing packages, and server-only features need separate audit.
+function configureBrahmaBundleFeatures() {
+  const found = new Map();
+  const srcRoot = path.join(workspaceRoot, 'src');
+  const callPattern = /\bfeature\s*\(\s*(['"`])([a-zA-Z_][\w-]*)\1\s*\)/g;
+  for (const filePath of walkFiles(srcRoot)) {
+    if (!sourceExtensions.includes(path.extname(filePath))) continue;
+    const contents = fs.readFileSync(filePath, 'utf8');
+    callPattern.lastIndex = 0;
+    for (const match of contents.matchAll(callPattern)) {
+      const featureName = match[2];
+      const locations = found.get(featureName) ?? [];
+      locations.push(toPosix(path.relative(workspaceRoot, filePath)));
+      found.set(featureName, locations);
+    }
+  }
+  if (args.featureProfile === 'maximum') {
+    for (const name of found.keys()) enabledBundleFeatures.add(name);
+  }
+  const discovered = [...found.keys()].sort();
+  return {
+    source: 'reconstructed-Claude-Code-2.1.88',
+    profile: args.featureProfile,
+    discoveredLiteralGates: discovered,
+    enabledCompileGates: [...enabledBundleFeatures].sort(),
+    occurrences: Object.fromEntries(discovered.map(name => [name, [...new Set(found.get(name))].sort()])),
+    limitations: [
+      'A compile-time flag alone does not guarantee working runtime behavior.',
+      'Non-literal and dynamically computed feature names may need manual patches.',
+      'Reconstructed/stubbed native or private packages may not implement real features.',
+      'Cloud-entitled and macOS-only features need separate integration and testing.',
+    ],
+  };
+}
+
+function writeBrahmaFeatureManifest(audit, status) {
+  const manifestPath = path.join(path.dirname(outputPath), featureManifestName);
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  fs.writeFileSync(manifestPath, JSON.stringify({ ...audit, buildStatus: status }, null, 2) + '\n', 'utf8');
 }
 
 function getOverlayPackages() {
@@ -219,6 +275,7 @@ function prepareWorkspace(overlayPackages) {
   if (
     marker &&
     marker.builderVersion === builderVersion &&
+    marker.featureProfile === args.featureProfile &&
     marker.sourceMapMtimeMs === currentMapStat.mtimeMs &&
     marker.sourceMapSize === currentMapStat.size
   ) {
@@ -266,6 +323,7 @@ function prepareWorkspace(overlayPackages) {
     JSON.stringify(
       {
         builderVersion,
+        featureProfile: args.featureProfile,
         sourceMapMtimeMs: currentMapStat.mtimeMs,
         sourceMapSize: currentMapStat.size,
         version: packageJson.version,
@@ -1613,6 +1671,8 @@ function parseArgs(argv) {
   const parsed = {
     outfile: undefined,
     noMinify: false,
+    featureProfile: 'maximum',
+    listFeatures: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -1628,6 +1688,18 @@ function parseArgs(argv) {
     }
     if (current === '--no-minify') {
       parsed.noMinify = true;
+      continue;
+    }
+    if (current === '--baseline-features') {
+      parsed.featureProfile = 'baseline';
+      continue;
+    }
+    if (current === '--max-features') {
+      parsed.featureProfile = 'maximum';
+      continue;
+    }
+    if (current === '--list-features') {
+      parsed.listFeatures = true;
       continue;
     }
     throw new Error(`Unknown argument: ${current}`);
