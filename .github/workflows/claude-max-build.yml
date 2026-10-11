@@ -1,0 +1,36 @@
+name: Reconstructed Claude Maximum Feature Build
+
+on:
+  push:
+    branches:
+      - feature/jarvis-claude-full-runtime-20261011
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Discover hidden compile-time features
+        run: node scripts/build-cli.mjs --list-features
+      - name: Rebuild reconstructed CLI with all literal feature flags
+        run: node scripts/build-cli.mjs --max-features --no-minify
+      - name: Verify source-build CLI launch
+        run: node dist/cli.js --version
+      - name: Upload rebuilt CLI and feature manifest
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-claude-source-build-windows
+          path: dist/
+          retention-days: 7
