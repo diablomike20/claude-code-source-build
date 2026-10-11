@@ -257,10 +257,45 @@ function configureBrahmaBundleFeatures() {
   };
 }
 
+function auditReconstructedNativePackages() {
+  const report = {};
+  // No-op stubs must never be reported as functional native capabilities.
+  for (const packageName of unavailableOverlayPackages) {
+    if (packageName === 'src') continue;
+    const root = packageRootPath(path.join(workspaceRoot, 'node_modules'), packageName);
+    const files = isDirectory(root) ? walkFiles(root) : [];
+    const sources = files.filter(file => sourceExtensions.includes(path.extname(file)));
+    let stubbed = 0;
+    for (const file of sources) {
+      try {
+        const content = fs.readFileSync(file, 'utf8');
+        if (content.startsWith('// AUTO-STUB:') || content.includes('__makeStub(')) {
+          stubbed += 1;
+        }
+      } catch {
+        // Missing or unreadable source cannot count as an implemented feature.
+      }
+    }
+    report[packageName] = {
+      sourceFiles: sources.length,
+      stubbedFiles: stubbed,
+      state: sources.length === 0 ? 'unavailable'
+        : stubbed === 0 ? 'source-present-untested'
+        : stubbed < sources.length ? 'partially-stubbed' : 'stubbed',
+    };
+  }
+  return report;
+}
+
 function writeBrahmaFeatureManifest(audit, status) {
   const manifestPath = path.join(path.dirname(outputPath), featureManifestName);
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
-  fs.writeFileSync(manifestPath, JSON.stringify({ ...audit, buildStatus: status }, null, 2) + '\n', 'utf8');
+  fs.writeFileSync(manifestPath, JSON.stringify({
+    ...audit,
+    buildStatus: status,
+    reconstructedNativePackages: auditReconstructedNativePackages(),
+    windowsNote: 'macOS-only Swift computer-use remains unavailable on Windows; Brahma MCP provides separate native Windows tools.',
+  }, null, 2) + '\n', 'utf8');
 }
 
 function getOverlayPackages() {
