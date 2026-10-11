@@ -55,6 +55,42 @@ node dist/cli.js
 
 Toggle in `enabledBundleFeatures` inside `scripts/build-cli.mjs`. ~90 flags available — search `feature('` in source.
 
+## JARVIS maximum feature profile
+
+The build script now defaults to the **maximum** compile-time feature profile.
+It scans the extracted `source/src` workspace for literal `feature('FLAG_NAME')`
+calls, enables every discovered compile-time gate, and preserves the four
+previously enabled defaults. This includes normally disabled gates whenever
+their original call sites are present in the reconstructed sources.
+
+```bash
+# Inspect the discovered flag names and their source-file locations
+node scripts/build-cli.mjs --list-features
+
+# Build with maximum discovered compile-time gates (default)
+node scripts/build-cli.mjs --max-features
+
+# Debugging / regression comparison only: original four-gate profile
+node scripts/build-cli.mjs --baseline-features
+```
+
+Each attempted build writes `dist/claude-feature-manifest.json` with the
+discovered and enabled gate names, source-file occurrences, and build status.
+The manifest distinguishes **compiled** from **runtime-tested** capability.
+
+**Important:** enabling a compile-time gate does not make an absent server,
+subscription-dependent cloud capability, or unavailable native library work.
+Some reconstructed `@ant/*` packages are currently stubs and cannot provide
+their original behavior. Non-literal/dynamic flags also require follow-up audit.
+Before integrating a gated feature into JARVIS, verify the real underlying
+implementation, Windows support, permissions and network behavior individually.
+
+For a privacy-focused execution environment, the source already recognizes
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and `DISABLE_TELEMETRY=1`.
+The permitted OpenRouter API connection still needs network access. These
+settings reduce nonessential traffic but are not proof of zero unexpected
+network requests; network policy and runtime observation remain necessary.
+
 ## Native Addons
 
 In `source/native-addons/`:
