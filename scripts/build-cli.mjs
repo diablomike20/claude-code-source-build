@@ -706,6 +706,11 @@ function finalizeBuild() {
   );
   const wrapperSource =
     `${createBanner(packageJson.version)}` +
+    // JARVIS defaults: no Anthropic telemetry, update or other nonessential traffic.
+    // The explicitly configured AI provider (for example OpenRouter) remains reachable.
+    `process.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC ??= '1';\n` +
+    `process.env.DISABLE_TELEMETRY ??= '1';\n` +
+    `process.env.CLAUDE_CODE_ENABLE_TELEMETRY ??= '0';\n` +
     `const __localStorageData = new Map();\n` +
     `Object.defineProperty(globalThis, 'localStorage', {\n` +
     `  configurable: true,\n` +
