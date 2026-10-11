@@ -81,6 +81,8 @@ const baseOverlayDependencyPackages = [
   'bidi-js',
   'chalk',
   'chokidar',
+  'ws',
+  '@aws-crypto/sha256-js',
   'code-excerpt',
   'detect-libc',
   'diff',
@@ -192,7 +194,7 @@ function main() {
     return;
   }
 
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 15; attempt += 1) {
     prepareWorkspace(getOverlayPackages());
     const audit = configureBrahmaBundleFeatures();
     // This is a compilation manifest, not a claim that every runtime feature works.
@@ -798,7 +800,7 @@ function reconcileBuildErrors(stderrText) {
   let changed = false;
 
   for (const match of stderrText.matchAll(
-    /error: Could not resolve: "([^"]+)"[\s\S]*?\n\s+at ([^\n:]+):\d+:\d+/g,
+    /error: Could not resolve: "([^"]+)"[\s\S]*?\n\s+at ([^\r\n]+?):\d+:\d+/g,
   )) {
     const specifier = match[1];
     const importer = match[2];
