@@ -504,6 +504,11 @@ function patchJarvisCliUnhandledStartup() {
   const replacement = `void main().catch(error => {
   const name = error instanceof Error ? error.name : 'UnknownError';
   process.stderr.write('[JARVIS_CLI_STARTUP_FAILURE] ' + name + '\\n');
+  if (process.env.JARVIS_CLI_BOOT_TRACE === '1') {
+    const raw = error instanceof Error ? String(error.message).slice(0,240) : '[non-Error exception]';
+    const safe = raw.replace(/(?:sk-[A-Za-z0-9_-]{8,}|Bearer\\s+\\S+|[A-Za-z0-9_-]{32,})/gi, '[REDACTED]');
+    process.stderr.write('[JARVIS_CLI_STARTUP_REASON] ' + safe + '\\n');
+  }
   process.exitCode = 1;
 });`;
   fs.writeFileSync(filePath, src.replace(anchor, replacement), 'utf8');
@@ -521,6 +526,19 @@ function instrumentJarvisBootstrap() {
     ['src/main.tsx', "profileCheckpoint('preAction_after_mdm');", 'preaction_after_mdm'],
     ['src/main.tsx', "profileCheckpoint('preAction_after_init');", 'preaction_after_init'],
     ['src/main.tsx', "profileCheckpoint('preAction_after_sinks');", 'preaction_after_sinks'],
+    ['src/main.tsx', "  if (getGlobalConfig().migrationVersion !== CURRENT_MIGRATION_VERSION) {", 'migration_read_version'],
+    ['src/main.tsx', "    migrateAutoUpdatesToSettings();", 'migration_auto_updates'],
+    ['src/main.tsx', "    migrateBypassPermissionsAcceptedToSettings();", 'migration_bypass'],
+    ['src/main.tsx', "    migrateEnableAllProjectMcpServersToSettings();", 'migration_mcp'],
+    ['src/main.tsx', "    resetProToOpusDefault();", 'migration_reset_model'],
+    ['src/main.tsx', "    migrateSonnet1mToSonnet45();", 'migration_sonnet1m'],
+    ['src/main.tsx', "    migrateLegacyOpusToCurrent();", 'migration_legacy_opus'],
+    ['src/main.tsx', "    migrateSonnet45ToSonnet46();", 'migration_sonnet46'],
+    ['src/main.tsx', "    migrateOpusToOpus1m();", 'migration_opus_1m'],
+    ['src/main.tsx', "    migrateReplBridgeEnabledToRemoteControlAtStartup();", 'migration_repl_bridge'],
+    ['src/main.tsx', "      resetAutoModeOptInForDefaultOffer();", 'migration_auto_mode'],
+    ['src/main.tsx', "    saveGlobalConfig(prev => prev.migrationVersion === CURRENT_MIGRATION_VERSION ? prev : {", 'migration_save_version'],
+    ['src/main.tsx', "  migrateChangelogFromConfig().catch(() => {", 'migration_changelog'],
     ['src/main.tsx', "    runMigrations();", 'preaction_before_migrations'],
     ['src/main.tsx', "profileCheckpoint('preAction_after_migrations');", 'preaction_after_migrations'],
     ['src/main.tsx', "profileCheckpoint('preAction_after_remote_settings');", 'preaction_after_remote_settings'],
