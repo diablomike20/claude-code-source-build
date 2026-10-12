@@ -477,6 +477,7 @@ function generateWorkspaceAugmentations() {
   restoreJarvisSkillPrefetchRuntime();
   restoreJarvisSnipRuntime();
   restoreJarvisContextCollapseRuntime();
+  restoreJarvisReactiveCompactRuntime();
   patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
@@ -671,6 +672,27 @@ function restoreJarvisContextCollapseRuntime() {
     'export async function applyCollapsesIfNeeded(messages, _context, _source) {return {messages};}',
     'export function isWithheldPromptTooLong(_message, _checker, _source) {return false;}',
     'export function recoverFromOverflow(messages, _source) {return {messages, committed: 0};}',
+    '',
+  ].join('\n'), 'utf8');
+}
+
+/** Keep normal request and standard compact behavior if private reactive recovery is absent. */
+function restoreJarvisReactiveCompactRuntime() {
+  const dir = path.join(workspaceRoot, 'src/services/compact');
+  const js = path.join(dir, 'reactiveCompact.js');
+  const recovered = ['reactiveCompact.ts', 'reactiveCompact.tsx', 'reactiveCompact.mjs'].some(name => {
+    const file = path.join(dir, name);
+    return isFile(file) && !fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:');
+  });
+  if (recovered) return;
+  if (isFile(js) && !fs.readFileSync(js, 'utf8').startsWith('// AUTO-STUB:')) return;
+  fs.mkdirSync(dir, {recursive: true});
+  fs.writeFileSync(js, [
+    '// JARVIS-RECONSTRUCTED: no-op only for unavailable private reactive compact',
+    'export function isReactiveCompactEnabled() {return false;}',
+    'export function isWithheldPromptTooLong(_message) {return false;}',
+    'export function isWithheldMediaSizeError(_message) {return false;}',
+    'export async function tryReactiveCompact(_params) {return null;}',
     '',
   ].join('\n'), 'utf8');
 }
