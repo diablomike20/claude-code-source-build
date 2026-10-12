@@ -43,7 +43,15 @@ export async function tryReactiveCompact(params) {
       undefined, // preserve the canonical compaction prompt
       true,      // auto-compact hook semantics
     );
-  } catch {
+  } catch (error) {
+    // Diagnostic only when explicitly enabled. Strip common secret/token
+    // patterns and avoid dumping user messages, request bodies or headers.
+    if (process.env.JARVIS_CLI_BOOT_TRACE === '1') {
+      const type = error instanceof Error ? error.name : 'UnknownError';
+      const raw = error instanceof Error ? String(error.message).slice(0, 180) : '';
+      const safe = raw.replace(/(?:sk-[A-Za-z0-9_-]{8,}|Bearer\\s+\\S+|[A-Za-z0-9_-]{32,})/gi, '[REDACTED]');
+      process.stderr.write('[JARVIS_REACTIVE_COMPACT_ERROR] ' + type + ' ' + safe + '\\n');
+    }
     // The original API 413 is surfaced by query.ts on failed recovery;
     // do not manufacture a successful compact or retry without a guard.
     return null;
