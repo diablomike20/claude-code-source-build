@@ -478,6 +478,7 @@ function generateWorkspaceAugmentations() {
   restoreJarvisSnipRuntime();
   restoreJarvisContextCollapseRuntime();
   restoreJarvisReactiveCompactRuntime();
+  restoreJarvisCachedMicrocompactRuntime();
   patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
@@ -693,6 +694,35 @@ function restoreJarvisReactiveCompactRuntime() {
     'export function isWithheldPromptTooLong(_message) {return false;}',
     'export function isWithheldMediaSizeError(_message) {return false;}',
     'export async function tryReactiveCompact(_params) {return null;}',
+    '',
+  ].join('\n'), 'utf8');
+}
+
+/**
+ * The proprietary cached-microcompact module is absent from this source map.
+ * Do not emit cache_edits that could corrupt model cache state. Keep standard
+ * model calls and ordinary auto-compaction functional.
+ */
+function restoreJarvisCachedMicrocompactRuntime() {
+  const dir = path.join(workspaceRoot, 'src/services/compact');
+  const js = path.join(dir, 'cachedMicrocompact.js');
+  const recovered = ['cachedMicrocompact.ts', 'cachedMicrocompact.tsx', 'cachedMicrocompact.mjs'].some(name => {
+    const file = path.join(dir, name);
+    return isFile(file) && !fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:');
+  });
+  if (recovered) return;
+  if (isFile(js) && !fs.readFileSync(js, 'utf8').startsWith('// AUTO-STUB:')) return;
+  fs.mkdirSync(dir, {recursive: true});
+  fs.writeFileSync(js, [
+    '// JARVIS-RECONSTRUCTED: missing private cache-editing module, no unsafe deletions',
+    'export function isCachedMicrocompactEnabled() {return false;}',
+    'export function isModelSupportedForCacheEditing(_model) {return false;}',
+    'export function getCachedMCConfig() {return {supportedModels: [], triggerThreshold: 0, keepRecent: 0};}',
+    'export function createCachedMCState() {return {registeredTools:new Set(),toolOrder:[],deletedRefs:new Set(),pinnedEdits:[]};}',
+    'export function registerToolResult(_state, _id) {}',
+    'export function registerToolMessage(_state, _ids) {}',
+    'export function getToolResultsToDelete(_state) {return [];}',
+    'export function createCacheEditsBlock(_state, _ids) {return null;}',
     '',
   ].join('\n'), 'utf8');
 }
