@@ -100,10 +100,12 @@ export function auditOptionalModules(workspaceRoot) {
       const body = fs.readFileSync(file, 'utf8');
       return {module: relative, state: body.startsWith('// AUTO-STUB:') ? 'generated-stub' :
         body.startsWith('// JARVIS-RECONSTRUCTED:') ? 'compatibility-fallback-not-full-featured' :
+        body.startsWith('// JARVIS-IMPLEMENTED:') ? 'local-reimplementation-not-original-runtime-test-required' :
         'source-present-runtime-not-proven'};
     });
     const fullySourced = detail.every(x => x.state === 'source-present-runtime-not-proven');
+    const implementedLocally = detail.every(x => x.state === 'local-reimplementation-not-original-runtime-test-required');
     return [feature, {status: fullySourced ? 'source-present-runtime-not-proven' :
-      'partial-or-unavailable', modules: detail}];
+      implementedLocally ? 'local-reimplementation-not-original' : 'partial-or-unavailable', modules: detail}];
   }));
 }
