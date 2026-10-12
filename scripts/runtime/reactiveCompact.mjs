@@ -49,8 +49,8 @@ export async function tryReactiveCompact(params) {
     if (process.env.JARVIS_CLI_BOOT_TRACE === '1') {
       const type = error instanceof Error ? error.name : 'UnknownError';
       const raw = error instanceof Error ? String(error.message).slice(0, 180) : '';
-      const safe = raw.replace(/(?:sk-[A-Za-z0-9_-]{8,}|Bearer\\s+\\S+|[A-Za-z0-9_-]{32,})/gi, '[REDACTED]');
-      process.stderr.write('[JARVIS_REACTIVE_COMPACT_ERROR] ' + type + ' ' + safe + '\\n');
+      const safe = raw.replace(/(?:sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+|[A-Za-z0-9_-]{32,})/gi, '[REDACTED]');
+      process.stderr.write('[JARVIS_REACTIVE_COMPACT_ERROR] ' + type + ' ' + safe + '\n');
     }
     // The original API 413 is surfaced by query.ts on failed recovery;
     // do not manufacture a successful compact or retry without a guard.
