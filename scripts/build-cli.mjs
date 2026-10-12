@@ -498,6 +498,7 @@ function generateWorkspaceAugmentations() {
   restoreJarvisContextCollapseRuntime();
   restoreJarvisReactiveCompactRuntime();
   restoreJarvisCachedMicrocompactRuntime();
+  guardJarvisMissingKairosTranscriptWriter();
   patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
@@ -742,6 +743,25 @@ function restoreJarvisCachedMicrocompactRuntime() {
     'export function createCacheEditsBlock(_state, _ids) {return null;}',
     '',
   ].join('\n'), 'utf8');
+}
+
+/**
+ * The recovered compact.ts opportunistically persists KAIROS transcript
+ * segments after summarization. The private transcript writer is absent
+ * in both audited user source trees. This optional side effect must not
+ * invalidate a REAL completed conversation compaction.
+ *
+ * Optional-call the method; no fake transcript is emitted or claimed.
+ * Feature audit separately reports the missing implementation.
+ */
+function guardJarvisMissingKairosTranscriptWriter() {
+  const target = path.join(workspaceRoot, 'src/services/compact/compact.ts');
+  if (!isFile(target)) throw new Error('Original Claude compactor unavailable');
+  const code = fs.readFileSync(target, 'utf8');
+  const original = 'sessionTranscriptModule?.writeSessionTranscriptSegment(';
+  const guarded = 'sessionTranscriptModule?.writeSessionTranscriptSegment?.(';
+  if (!code.includes(original)) return;
+  fs.writeFileSync(target, code.split(original).join(guarded), 'utf8');
 }
 
 function patchJarvisCliUnhandledStartup() {
