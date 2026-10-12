@@ -2690,9 +2690,9 @@ function runHeadlessStreaming(
     }
   }
 
-  // Set up UDS inbox callback so the query loop is kicked off
-  // when a message arrives via the UDS socket in headless mode.
-  if (feature('UDS_INBOX')) {
+  // UDS sockets are not supported on Windows; JARVIS uses native Windows MCP.
+  // Only register the callback when the OS can provide this transport.
+  if (feature('UDS_INBOX') && process.platform !== 'win32') {
     /* eslint-disable @typescript-eslint/no-require-imports */
     const { setOnEnqueue } = require('../utils/udsMessaging.js')
     /* eslint-enable @typescript-eslint/no-require-imports */
