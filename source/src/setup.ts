@@ -294,9 +294,20 @@ export async function setup(
     initSessionMemory() // Synchronous - registers hook, gate check happens lazily
     if (feature('CONTEXT_COLLAPSE')) {
       /* eslint-disable @typescript-eslint/no-require-imports */
-      ;(
-        require('./services/contextCollapse/index.js') as typeof import('./services/contextCollapse/index.js')
-      ).initContextCollapse()
+      // Recovered sourcemaps omit the private Context Collapse initializer.
+      // Do not let an unavailable optional module prevent ALL CLI responses;
+      // report its absence rather than pretending the feature was initialized.
+      const collapseModule = require('./services/contextCollapse/index.js') as {
+        initContextCollapse?: () => void
+      }
+      if (typeof collapseModule?.initContextCollapse === 'function') {
+        collapseModule.initContextCollapse()
+      } else {
+        logForDiagnosticsNoPII('warn', 'reconstructed_context_collapse_module_unavailable')
+        if (process.env.JARVIS_CLI_BOOT_TRACE === '1') {
+          process.stderr.write('[JARVIS_OPTIONAL_MODULE_MISSING] CONTEXT_COLLAPSE\\n')
+        }
+      }
       /* eslint-enable @typescript-eslint/no-require-imports */
     }
   }
