@@ -472,6 +472,7 @@ function generateWorkspaceAugmentations() {
   ensureUnavailablePackageEntries();
   patchMissingExports();
   patchFeatureFlags();
+  patchJarvisExternalProviderProMigration();
   patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
@@ -494,6 +495,25 @@ function generateWorkspaceAugmentations() {
  * This is a no-feature-loss failure-path change for the generated CLI only.
  * Never echo environment variables or full exception messages into production logs.
  */
+/**
+ * Pro subscription migrations are meaningful only for Anthropic's own API.
+ * ANTHROPIC_BASE_URL points JARVIS to OpenRouter or localhost, and checking
+ * an Anthropic subscription there throws before the CLI can accept a prompt.
+ * Preserve first-party migration behavior, skip it only for custom gateways.
+ */
+function patchJarvisExternalProviderProMigration() {
+  const filePath = path.join(workspaceRoot, 'src/migrations/resetProToOpusDefault.ts');
+  const src = fs.readFileSync(filePath, 'utf8');
+  const oldImport = "import { getAPIProvider } from '../utils/model/providers.js'";
+  const newImport = "import { getAPIProvider, isFirstPartyAnthropicBaseUrl } from '../utils/model/providers.js'";
+  const oldCondition = "if (apiProvider !== 'firstParty' || !isProSubscriber()) {";
+  const newCondition = "if (apiProvider !== 'firstParty' || !isFirstPartyAnthropicBaseUrl() || !isProSubscriber()) {";
+  if (!src.includes(oldImport) || !src.includes(oldCondition)) {
+    throw new Error('Reconstructed Pro migration changed; review provider-aware safety patch');
+  }
+  fs.writeFileSync(filePath, src.replace(oldImport, newImport).replace(oldCondition, newCondition), 'utf8');
+}
+
 function patchJarvisCliUnhandledStartup() {
   const filePath = path.join(workspaceRoot, 'src/entrypoints/cli.tsx');
   const src = fs.readFileSync(filePath, 'utf8');
