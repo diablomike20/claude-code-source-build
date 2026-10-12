@@ -475,6 +475,7 @@ function generateWorkspaceAugmentations() {
   patchJarvisExternalProviderProMigration();
   restoreJarvisProactiveRuntime();
   restoreJarvisSkillPrefetchRuntime();
+  restoreJarvisSnipRuntime();
   patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
@@ -610,6 +611,42 @@ function restoreJarvisSkillPrefetchRuntime() {
     'export async function collectSkillDiscoveryPrefetch() { return []; }',
     '',
   ].join('\n'), 'utf8');
+}
+
+/**
+ * The private HISTORY_SNIP modules are absent from the recovered sourcemap.
+ * Preserve all messages until a full verified snip implementation is
+ * available, rather than crash the model prompt or drop context.
+ * Real recovered modules are NEVER overwritten.
+ */
+function restoreJarvisSnipRuntime() {
+  const dir = path.join(workspaceRoot, 'src/services/compact');
+  const recover = (name, source) => {
+    const js = path.join(dir, name + '.js');
+    const recovered = ['.ts', '.tsx', '.mjs'].some(ext => {
+      const file = path.join(dir, name + ext);
+      return isFile(file) && !fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:');
+    });
+    if (recovered) return;
+    if (isFile(js) && !fs.readFileSync(js, 'utf8').startsWith('// AUTO-STUB:')) return;
+    fs.mkdirSync(dir, {recursive: true});
+    fs.writeFileSync(js, source.join('\n') + '\n', 'utf8');
+  };
+  recover('snipProjection', [
+    '// JARVIS-RECONSTRUCTED: lossless fallback for unavailable history projection',
+    'export function projectSnippedView(messages) { return messages; }',
+    'export function isSnipBoundaryMessage(_message) { return false; }',
+  ]);
+  recover('snipCompact', [
+    '// JARVIS-RECONSTRUCTED: no irreversible trimming without actual snip engine',
+    'export const SNIP_NUDGE_TEXT = "Keep relevant context available."; ',
+    'export function isSnipRuntimeEnabled() { return false; }',
+    'export function shouldNudgeForSnips(_messages) { return false; }',
+    'export function isSnipMarkerMessage(_message) { return false; }',
+    'export function snipCompactIfNeeded(messages, _options) {',
+    '  return {messages, tokensFreed: 0, boundaryMessage: undefined, executed: false};',
+    '}',
+  ]);
 }
 
 function patchJarvisCliUnhandledStartup() {
