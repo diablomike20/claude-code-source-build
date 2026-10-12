@@ -537,11 +537,21 @@ export async function runHeadless(
   // (e.g. env was injected by the SDK transport after argv parsing).
   if (
     (feature('PROACTIVE') || feature('KAIROS')) &&
-    proactiveModule &&
-    !proactiveModule.isProactiveActive() &&
     isEnvTruthy(process.env.CLAUDE_CODE_PROACTIVE)
   ) {
-    proactiveModule.activateProactive('command')
+    if (proactiveModule &&
+        typeof proactiveModule.isProactiveActive === 'function' &&
+        typeof proactiveModule.activateProactive === 'function') {
+      if (!proactiveModule.isProactiveActive()) {
+        proactiveModule.activateProactive('command')
+      }
+    } else {
+      // The private proactive module is not in the recovered sourcemap.
+      // Do not abort unrelated headless sessions on an absent optional module.
+      if (process.env.JARVIS_CLI_BOOT_TRACE === '1') {
+        process.stderr.write('[JARVIS_OPTIONAL_MODULE_MISSING] PROACTIVE\\n')
+      }
+    }
   }
 
   // Periodically force a full GC to keep memory usage in check
