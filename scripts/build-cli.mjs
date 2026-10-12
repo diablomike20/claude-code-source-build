@@ -472,6 +472,7 @@ function generateWorkspaceAugmentations() {
   ensureUnavailablePackageEntries();
   patchMissingExports();
   patchFeatureFlags();
+  patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
 
@@ -489,6 +490,25 @@ function generateWorkspaceAugmentations() {
  * The sourcemap extraction overwrites the temporary workspace, so instrument
  * only after generation and before the Bun build. Never touch source/master.
  */
+/** Ensure rejected async CLI startup cannot silently succeed with exit code 0.
+ * This is a no-feature-loss failure-path change for the generated CLI only.
+ * Never echo environment variables or full exception messages into production logs.
+ */
+function patchJarvisCliUnhandledStartup() {
+  const filePath = path.join(workspaceRoot, 'src/entrypoints/cli.tsx');
+  const src = fs.readFileSync(filePath, 'utf8');
+  const anchor = 'void main();';
+  if (!src.includes(anchor)) {
+    throw new Error('Claude source entrypoint changed: no main() rejection anchor');
+  }
+  const replacement = `void main().catch(error => {
+  const name = error instanceof Error ? error.name : 'UnknownError';
+  process.stderr.write('[JARVIS_CLI_STARTUP_FAILURE] ' + name + '\\n');
+  process.exitCode = 1;
+});`;
+  fs.writeFileSync(filePath, src.replace(anchor, replacement), 'utf8');
+}
+
 function instrumentJarvisBootstrap() {
   const anchors = [
     ['src/entrypoints/cli.tsx', "profileCheckpoint('cli_before_main_import');", 'entry_before_main_import'],
@@ -501,6 +521,11 @@ function instrumentJarvisBootstrap() {
     ['src/main.tsx', "profileCheckpoint('preAction_after_mdm');", 'preaction_after_mdm'],
     ['src/main.tsx', "profileCheckpoint('preAction_after_init');", 'preaction_after_init'],
     ['src/main.tsx', "profileCheckpoint('preAction_after_sinks');", 'preaction_after_sinks'],
+    ['src/main.tsx', "    runMigrations();", 'preaction_before_migrations'],
+    ['src/main.tsx', "profileCheckpoint('preAction_after_migrations');", 'preaction_after_migrations'],
+    ['src/main.tsx', "profileCheckpoint('preAction_after_remote_settings');", 'preaction_after_remote_settings'],
+    ['src/main.tsx', "profileCheckpoint('preAction_after_settings_sync');", 'preaction_after_settings_sync'],
+
     ['src/main.tsx', "profileCheckpoint('action_handler_start');", 'action_handler_start'],
     ['src/main.tsx', "profileCheckpoint('main_before_run');", 'main_before_run'],
     ['src/main.tsx', "profileCheckpoint('run_function_start');", 'main_run_start'],
