@@ -703,23 +703,17 @@ function restoreJarvisContextCollapseRuntime() {
 /** Keep normal request and standard compact behavior if private reactive recovery is absent. */
 function restoreJarvisReactiveCompactRuntime() {
   const dir = path.join(workspaceRoot, 'src/services/compact');
-  const js = path.join(dir, 'reactiveCompact.js');
-  const recovered = ['reactiveCompact.ts', 'reactiveCompact.tsx', 'reactiveCompact.mjs'].some(name => {
-    const file = path.join(dir, name);
-    return isFile(file) && !fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:');
-  });
-  if (recovered) return;
-  if (isFile(js) && !fs.readFileSync(js, 'utf8').startsWith('// AUTO-STUB:')) return;
+  const files = ['reactiveCompact.ts', 'reactiveCompact.tsx', 'reactiveCompact.js', 'reactiveCompact.mjs'];
+  if (files.some(name => {
+    const target = path.join(dir, name);
+    return isFile(target) && !/^(\/\/ AUTO-STUB:|\/\/ JARVIS-RECONSTRUCTED:)/.test(fs.readFileSync(target, 'utf8'));
+  })) return;
   fs.mkdirSync(dir, {recursive: true});
-  fs.writeFileSync(js, [
-    '// JARVIS-RECONSTRUCTED: no-op only for unavailable private reactive compact',
-    'export function isReactiveCompactEnabled() {return false;}',
-    'export function isWithheldPromptTooLong(_message) {return false;}',
-    'export function isWithheldMediaSizeError(_message) {return false;}',
-    'export async function tryReactiveCompact(_params) {return null;}',
-    '',
-  ].join('\n'), 'utf8');
+  const source = path.join(__dirname, 'runtime', 'reactiveCompact.mjs');
+  if (!isFile(source)) throw new Error('Missing implemented reactive compact source');
+  fs.copyFileSync(source, path.join(dir, 'reactiveCompact.js'));
 }
+
 
 /**
  * The proprietary cached-microcompact module is absent from this source map.
