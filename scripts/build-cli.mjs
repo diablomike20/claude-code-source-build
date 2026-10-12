@@ -473,6 +473,7 @@ function generateWorkspaceAugmentations() {
   patchMissingExports();
   patchFeatureFlags();
   patchJarvisExternalProviderProMigration();
+  restoreJarvisProactiveRuntime();
   patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
@@ -546,6 +547,42 @@ function patchJarvisExternalProviderProMigration() {
     .replace(sonnetImport, newImport)
     .replace(sonnetCondition,
       "if (getAPIProvider() !== 'firstParty' || !isFirstPartyAnthropicBaseUrl()) {"), 'utf8');
+}
+
+/**
+ * Restore the small proactive-mode state API lost from the recovered sourcemap.
+ * Do not modify a recovered implementation: only replace missing or AUTO-STUB
+ * files. Keep activation explicitly opt-in, and maintain shared module state
+ * across the CLI and streaming session.
+ *
+ * This restores the local session activation/pausing contract, not remote
+ * entitlement, background cron, or any private backend implementation.
+ */
+function restoreJarvisProactiveRuntime() {
+  const dir = path.join(workspaceRoot, 'src', 'proactive');
+  const js = path.join(dir, 'index.js');
+  const recovered = ['index.ts', 'index.tsx', 'index.mjs'].some(name => {
+    const file = path.join(dir, name);
+    return isFile(file) && !fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:');
+  });
+  if (recovered) return;
+  if (isFile(js) && !fs.readFileSync(js, 'utf8').startsWith('// AUTO-STUB:')) return;
+  fs.mkdirSync(dir, { recursive: true });
+  const source = [
+    '// JARVIS-RECONSTRUCTED: minimal local proactive session state',
+    '// No background action runs unless explicitly activated by user or SDK.',
+    'let active = false;',
+    'let paused = false;',
+    'export function isProactiveActive() { return active; }',
+    'export function isProactivePaused() { return paused; }',
+    'export function activateProactive(_source = "command") { active = true; paused = false; }',
+    'export function deactivateProactive() { active = false; paused = false; }',
+    'export function pauseProactive() { paused = true; }',
+    'export function resumeProactive() { paused = false; }',
+    'export function setProactivePaused(value) { paused = Boolean(value); }',
+    '',
+  ].join('\n');
+  fs.writeFileSync(js, source, 'utf8');
 }
 
 function patchJarvisCliUnhandledStartup() {
