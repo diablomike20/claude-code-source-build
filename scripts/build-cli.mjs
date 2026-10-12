@@ -617,23 +617,27 @@ function restoreJarvisProactiveRuntime() {
  */
 function restoreJarvisSkillPrefetchRuntime() {
   const dir = path.join(workspaceRoot, 'src/services/skillSearch');
-  const js = path.join(dir, 'prefetch.js');
-  const recovered = ['prefetch.ts', 'prefetch.tsx', 'prefetch.mjs'].some(name => {
+  const candidates = ['prefetch.ts', 'prefetch.tsx', 'prefetch.js', 'prefetch.mjs'];
+  const fullSource = candidates.find(name => {
     const file = path.join(dir, name);
-    return isFile(file) && !fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:');
+    return isFile(file) && !/^(\/\/ AUTO-STUB:|\/\/ JARVIS-RECONSTRUCTED:)/.test(fs.readFileSync(file, 'utf8'));
   });
-  if (recovered) return;
-  if (isFile(js) && !fs.readFileSync(js, 'utf8').startsWith('// AUTO-STUB:')) return;
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(js, [
-    '// JARVIS-RECONSTRUCTED: optional skill discovery prefetch fallback',
-    '// Core manual skill loading stays in its original implementation.',
-    '// The private asynchronous prefetch was absent from the sourcemap.',
-    'export function startSkillDiscoveryPrefetch() { return null; }',
-    'export async function collectSkillDiscoveryPrefetch() { return []; }',
-    '',
-  ].join('\n'), 'utf8');
+  // A recovered original or our already installed implementation takes precedence.
+  if (fullSource) return;
+  fs.mkdirSync(dir, {recursive: true});
+  const sources = [
+    ['skillPrefetch.mjs', 'prefetch.js'],
+    ['skillDiscoveryCore.mjs', 'discoveryCore.js'],
+  ];
+  for (const [sourceName, targetName] of sources) {
+    const original = path.join(__dirname, 'runtime', sourceName);
+    const target = path.join(dir, targetName);
+    if (!isFile(original)) throw new Error('Skill discovery implementation missing: ' + original);
+    if (isFile(target) && !/^(\/\/ AUTO-STUB:|\/\/ JARVIS-RECONSTRUCTED:)/.test(fs.readFileSync(target, 'utf8'))) continue;
+    fs.copyFileSync(original, target);
+  }
 }
+
 
 /**
  * The private HISTORY_SNIP modules are absent from the recovered sourcemap.
