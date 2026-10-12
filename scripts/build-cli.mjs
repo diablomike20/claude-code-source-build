@@ -491,6 +491,13 @@ function generateWorkspaceAugmentations() {
  */
 function instrumentJarvisBootstrap() {
   const anchors = [
+    ['src/entrypoints/cli.tsx', "profileCheckpoint('cli_before_main_import');", 'entry_before_main_import'],
+    ['src/entrypoints/cli.tsx', "profileCheckpoint('cli_after_main_import');", 'entry_after_main_import'],
+    ['src/entrypoints/cli.tsx', "await cliMain();", 'entry_invoke_main'],
+    ['src/main.tsx', "profileCheckpoint('main_client_type_determined');", 'main_client_type'],
+    ['src/main.tsx', "profileCheckpoint('main_before_run');", 'main_before_run'],
+    ['src/main.tsx', "profileCheckpoint('run_function_start');", 'main_run_start'],
+    ['src/main.tsx', "profileCheckpoint('action_after_input_prompt');", 'main_prompt_received'],
     ['src/main.tsx', "profileCheckpoint('before_print_import');", 'main_before_print_import'],
     ['src/main.tsx', "profileCheckpoint('after_print_import');", 'main_after_print_import'],
     ['src/main.tsx', 'void runHeadless(inputPrompt,', 'main_dispatch_headless'],
