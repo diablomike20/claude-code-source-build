@@ -415,7 +415,20 @@ const getWorkflowCommands = feature('WORKFLOW_SCRIPTS')
  * so this must be re-evaluated on every getCommands() call.
  */
 export function meetsAvailabilityRequirement(cmd: Command): boolean {
-  if (!cmd.availability) return true
+  // Source-map reconstruction may leave private command modules as
+  // AUTO-STUB proxies. They are not valid commands: their "availability"
+  // property can be a callable proxy, not the Command[] schema's string[].
+  // Fail closed on malformed definitions instead of crashing all sessions.
+  if (!cmd || typeof cmd !== 'object' ||
+      typeof cmd.name !== 'string' || typeof cmd.type !== 'string') {
+    logForDebugging('[JARVIS] Skipped malformed recovered command definition')
+    return false
+  }
+  if (cmd.availability === undefined) return true
+  if (!Array.isArray(cmd.availability)) {
+    logForDebugging('[JARVIS] Skipped command with malformed availability list')
+    return false
+  }
   for (const a of cmd.availability) {
     switch (a) {
       case 'claude-ai':
