@@ -6,6 +6,7 @@ import path from 'node:path';
 import { builtinModules } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { restoreDonorSource, auditOptionalModules } from './donor-source.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const versionRoot = path.resolve(__dirname, '..');
@@ -18,7 +19,7 @@ const featureManifestName = 'claude-feature-manifest.json';
 const workspaceRoot = path.join(versionRoot, '.cache', 'workspace');
 const markerPath = path.join(workspaceRoot, '.prepared.json');
 const overlayStampPath = path.join(workspaceRoot, '.overlay-install.json');
-const builderVersion = 9;
+const builderVersion = 10;
 
 const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts', '.js', '.mjs', '.cjs'];
 const assetExtensions = ['.md', '.txt'];
@@ -176,6 +177,7 @@ const publicMacroValues = {
   VERSION_CHANGELOG: null,
 };
 
+let donorSourceReport = {status: 'not-configured'};
 const extraOverlayPackages = new Set();
 const stubExportAugmentations = new Map();
 const enabledBundleFeatures = new Set([
@@ -297,8 +299,24 @@ function writeBrahmaFeatureManifest(audit, status) {
     ...audit,
     buildStatus: status,
     reconstructedNativePackages: auditReconstructedNativePackages(),
+    originalSourceRecovery: donorSourceReport,
+    optionalModuleAudit: auditOptionalModules(workspaceRoot),
+    generatedLocalStubs: auditGeneratedLocalStubs(),
     windowsNote: 'macOS-only Swift computer-use remains unavailable on Windows; Brahma MCP provides separate native Windows tools.',
   }, null, 2) + '\n', 'utf8');
+}
+
+// Automated placeholders are NOT complete implementations, even if they compile.
+function auditGeneratedLocalStubs() {
+  const root = path.join(workspaceRoot, 'src');
+  if (!fs.existsSync(root)) return {count: 0, paths: []};
+  const paths = walkFiles(root).filter(file => sourceExtensions.includes(path.extname(file)))
+    .filter(file => {
+      try { return fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:'); }
+      catch { return false; }
+    })
+    .map(file => toPosix(path.relative(workspaceRoot, file))).sort();
+  return {count: paths.length, paths};
 }
 
 function getOverlayPackages() {
@@ -464,6 +482,7 @@ function generateWorkspaceAugmentations() {
   generatePackageSubpathShims(new Set());
   ensureSharpPackageJson(new Set());
   ensureCliBoxesAsset(new Set());
+  donorSourceReport = restoreDonorSource(workspaceRoot, process.env.JARVIS_CLAUDE_DONOR_SRC);
   generateMissingLocalStubs();
   generateSourceAliasShims(new Set());
   overlaySourceAssets();
