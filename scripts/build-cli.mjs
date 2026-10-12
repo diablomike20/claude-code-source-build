@@ -604,7 +604,7 @@ function instrumentJarvisBootstrap() {
     ['src/main.tsx', "profileCheckpoint('action_handler_start');", 'action_handler_start'],
     ['src/main.tsx', "profileCheckpoint('action_tools_loaded');", 'action_tools_loaded'],
     ['src/main.tsx', "profileCheckpoint('action_before_setup');", 'action_before_setup'],
-    ['src/main.tsx', "    } = await import('./setup.js');", 'action_after_setup_import'],
+    ['src/main.tsx', "    const messagingSocketPath = feature('UDS_INBOX')", 'action_after_setup_import'],
     ['src/main.tsx', "    const setupPromise = setup(preSetupCwd", 'action_call_setup'],
     ['src/main.tsx', "profileCheckpoint('action_after_setup');", 'action_after_setup'],
     ['src/main.tsx', "profileCheckpoint('action_commands_loaded');", 'action_commands_loaded'],
