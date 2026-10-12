@@ -619,7 +619,7 @@ function instrumentJarvisBootstrap() {
     ['src/main.tsx', "profileCheckpoint('action_after_input_prompt');", 'main_prompt_received'],
     ['src/main.tsx', "profileCheckpoint('before_print_import');", 'main_before_print_import'],
     ['src/main.tsx', "profileCheckpoint('after_print_import');", 'main_after_print_import'],
-    ['src/main.tsx', 'void runHeadless(inputPrompt,', 'main_dispatch_headless'],
+    ['src/main.tsx', 'await runHeadless(inputPrompt,', 'main_dispatch_headless'],
     ['src/cli/print.ts', "headlessProfilerCheckpoint('runHeadless_entry')", 'headless_entered'],
     ['src/cli/print.ts', "headlessProfilerCheckpoint('after_grove_check')", 'headless_after_grove'],
     ['src/cli/print.ts', 'const structuredIO = getStructuredIO(inputPrompt, options)', 'headless_structured_io'],
