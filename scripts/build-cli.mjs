@@ -474,7 +474,7 @@ function generateWorkspaceAugmentations() {
   patchFeatureFlags();
   patchJarvisExternalProviderProMigration();
   restoreJarvisProactiveRuntime();
-  patchJarvisOptionalSkillPrefetch();
+  restoreJarvisSkillPrefetchRuntime();
   patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
@@ -592,23 +592,24 @@ function restoreJarvisProactiveRuntime() {
  * private prefetch module has only an AUTO-STUB, do not crash the actual model
  * request. A recovered implementation is still called normally.
  */
-function patchJarvisOptionalSkillPrefetch() {
-  const filePath = path.join(workspaceRoot, 'src/query.ts');
-  const src = fs.readFileSync(filePath, 'utf8');
-  const oldStart = "const pendingSkillPrefetch = skillPrefetch?.startSkillDiscoveryPrefetch(";
-  const newStart = "const pendingSkillPrefetch = typeof skillPrefetch?.startSkillDiscoveryPrefetch === 'function'\n" +
-    "      ? skillPrefetch.startSkillDiscoveryPrefetch(";
-  const oldEnd = "      toolUseContext,\n    )";
-  const newEnd = "      toolUseContext,\n      ) : null";
-  const oldCollect = "if (skillPrefetch && pendingSkillPrefetch) {";
-  const newCollect = "if (skillPrefetch && pendingSkillPrefetch && typeof skillPrefetch.collectSkillDiscoveryPrefetch === 'function') {";
-  if (!src.includes(oldStart) || !src.includes(oldEnd) || !src.includes(oldCollect)) {
-    throw new Error('Claude skill prefetch source changed; review missing-module guard');
-  }
-  fs.writeFileSync(filePath, src
-    .replace(oldStart, newStart)
-    .replace(oldEnd, newEnd)
-    .replace(oldCollect, newCollect), 'utf8');
+function restoreJarvisSkillPrefetchRuntime() {
+  const dir = path.join(workspaceRoot, 'src/services/skillSearch');
+  const js = path.join(dir, 'prefetch.js');
+  const recovered = ['prefetch.ts', 'prefetch.tsx', 'prefetch.mjs'].some(name => {
+    const file = path.join(dir, name);
+    return isFile(file) && !fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:');
+  });
+  if (recovered) return;
+  if (isFile(js) && !fs.readFileSync(js, 'utf8').startsWith('// AUTO-STUB:')) return;
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(js, [
+    '// JARVIS-RECONSTRUCTED: optional skill discovery prefetch fallback',
+    '// Core manual skill loading stays in its original implementation.',
+    '// The private asynchronous prefetch was absent from the sourcemap.',
+    'export function startSkillDiscoveryPrefetch() { return null; }',
+    'export async function collectSkillDiscoveryPrefetch() { return []; }',
+    '',
+  ].join('\n'), 'utf8');
 }
 
 function patchJarvisCliUnhandledStartup() {
