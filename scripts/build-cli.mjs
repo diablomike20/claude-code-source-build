@@ -472,6 +472,7 @@ function generateWorkspaceAugmentations() {
   ensureUnavailablePackageEntries();
   patchMissingExports();
   patchFeatureFlags();
+  instrumentJarvisBootstrap();
 }
 
 /**
@@ -479,6 +480,39 @@ function generateWorkspaceAugmentations() {
  * Bun hardcodes __dirname at build time, so the bundled code resolves
  * native requires to the workspace path, not the dist path.
  */
+
+/**
+ * Opt-in bootstrap trace for JARVIS's reconstructed Node SDK acceptance test.
+ * These markers do not include secrets or user inputs. They are never emitted
+ * in regular installs (JARVIS_CLI_BOOT_TRACE is absent).
+ *
+ * The sourcemap extraction overwrites the temporary workspace, so instrument
+ * only after generation and before the Bun build. Never touch source/master.
+ */
+function instrumentJarvisBootstrap() {
+  const anchors = [
+    ['src/main.tsx', "profileCheckpoint('before_print_import');", 'main_before_print_import'],
+    ['src/main.tsx', "profileCheckpoint('after_print_import');", 'main_after_print_import'],
+    ['src/main.tsx', 'void runHeadless(inputPrompt,', 'main_dispatch_headless'],
+    ['src/cli/print.ts', "headlessProfilerCheckpoint('runHeadless_entry')", 'headless_entered'],
+    ['src/cli/print.ts', "headlessProfilerCheckpoint('after_grove_check')", 'headless_after_grove'],
+    ['src/cli/print.ts', 'const structuredIO = getStructuredIO(inputPrompt, options)', 'headless_structured_io'],
+    ['src/cli/print.ts', "headlessProfilerCheckpoint('after_modelStrings')", 'headless_after_models'],
+    ['src/cli/print.ts', "headlessProfilerCheckpoint('before_runHeadlessStreaming')", 'headless_before_stream'],
+    ['src/cli/print.ts', 'const output = structuredIO.outbound', 'stream_created'],
+    ['src/cli/print.ts', 'for await (const message of structuredIO.structuredInput) {', 'stdin_reader_entered'],
+  ];
+  for (const [relativePath, anchor, tag] of anchors) {
+    const filePath = path.join(workspaceRoot, relativePath);
+    const src = fs.readFileSync(filePath, 'utf8');
+    if (!src.includes(anchor)) {
+      throw new Error('JARVIS bootstrap trace anchor missing: ' + relativePath + ' / ' + tag);
+    }
+    const marker = "if (process.env.JARVIS_CLI_BOOT_TRACE === '1') process.stderr.write('[JARVIS_BOOT] " + tag + "\\n');";
+    fs.writeFileSync(filePath, src.replace(anchor, marker + '\n' + anchor), 'utf8');
+  }
+}
+
 function ensureNativeAddonPrebuilds() {
   const nativeAddonsDir = path.join(sourceRoot, 'native-addons');
   if (!isDirectory(nativeAddonsDir)) return;
