@@ -28,7 +28,9 @@
 - `scripts/tests/reactive-compact.test.mjs`: 5 production-reactive module tests proving invocation of original summary engine with correct parameters, user opt-outs, abort/recursion guards and errors.
 - Other existing build-safety and proactive-state tests also run.
 - Windows SSE run [#38197956433](https://github.com/diablomike20/Jarvis-Ai/actions/runs/38197956433): **28 unit tests PASS (0 fail), CLI->fixture SSE PASS**. Fixture replies are synthetic; no real LLM quality claim.
-- A separate later Windows scenario is configured to send an initial `Prompt is too long` response and test compact/retry. Its outcome must be checked before asserting end-to-end overflow success.
+- Windows SSE acceptance [#38198605574](https://github.com/diablomike20/Jarvis-Ai/actions/runs/38198605574): **28 tests PASS; normal SSE PASS; overflow/compaction/retry SSE PASS**. The overflow scenario generated **3 actual local /v1/messages requests** (initial API error, original Claude summary call, successful retry).
+- The first overflow run detected `sessionTranscriptModule?.writeSessionTranscriptSegment is not a function`, from missing optional `KAIROS` transcript writer. The build now guards that optional post-summary side effect; it does **not** synthesize a transcript or claim the KAIROS feature is implemented. The audit includes the missing transcript module within `PROACTIVE/KAIROS`.
+- Provider responses in these tests are synthetic fixtures; separately validate live provider, actual tool calls and media-error recovery before considering the whole project finished.
 
 ## Engineering invariants
 
