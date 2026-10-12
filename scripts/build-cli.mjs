@@ -476,6 +476,7 @@ function generateWorkspaceAugmentations() {
   restoreJarvisProactiveRuntime();
   restoreJarvisSkillPrefetchRuntime();
   restoreJarvisSnipRuntime();
+  restoreJarvisContextCollapseRuntime();
   patchJarvisCliUnhandledStartup();
   instrumentJarvisBootstrap();
 }
@@ -647,6 +648,31 @@ function restoreJarvisSnipRuntime() {
     '  return {messages, tokensFreed: 0, boundaryMessage: undefined, executed: false};',
     '}',
   ]);
+}
+
+/**
+ * Preserve the regular auto-compaction route when private contextCollapse
+ * implementation is absent. Never discard a message or claim a collapse took
+ * place. The existing Claude auto-compact remains available independently.
+ */
+function restoreJarvisContextCollapseRuntime() {
+  const dir = path.join(workspaceRoot, 'src/services/contextCollapse');
+  const js = path.join(dir, 'index.js');
+  const recovered = ['index.ts', 'index.tsx', 'index.mjs'].some(name => {
+    const file = path.join(dir, name);
+    return isFile(file) && !fs.readFileSync(file, 'utf8').startsWith('// AUTO-STUB:');
+  });
+  if (recovered) return;
+  if (isFile(js) && !fs.readFileSync(js, 'utf8').startsWith('// AUTO-STUB:')) return;
+  fs.mkdirSync(dir, {recursive: true});
+  fs.writeFileSync(js, [
+    '// JARVIS-RECONSTRUCTED: lossless missing contextCollapse fallback',
+    'export function isContextCollapseEnabled() {return false;}',
+    'export async function applyCollapsesIfNeeded(messages, _context, _source) {return {messages};}',
+    'export function isWithheldPromptTooLong(_message, _checker, _source) {return false;}',
+    'export function recoverFromOverflow(messages, _source) {return {messages, committed: 0};}',
+    '',
+  ].join('\n'), 'utf8');
 }
 
 function patchJarvisCliUnhandledStartup() {
