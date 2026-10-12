@@ -562,6 +562,9 @@ function patchJarvisCliUnhandledStartup() {
     const raw = error instanceof Error ? String(error.message).slice(0,240) : '[non-Error exception]';
     const safe = raw.replace(/(?:sk-[A-Za-z0-9_-]{8,}|Bearer\\s+\\S+|[A-Za-z0-9_-]{32,})/gi, '[REDACTED]');
     process.stderr.write('[JARVIS_CLI_STARTUP_REASON] ' + safe + '\\n');
+    const stack = error instanceof Error ? String(error.stack || '').split('\\n').slice(1, 12).join(' | ') : '';
+    const compact = stack.replace(/(?:sk-[A-Za-z0-9_-]{8,}|Bearer\\s+\\S+)/gi, '[REDACTED]').slice(0, 1500);
+    process.stderr.write('[JARVIS_CLI_STARTUP_STACK] ' + compact + '\\n');
   }
   process.exitCode = 1;
 });`;
@@ -601,6 +604,8 @@ function instrumentJarvisBootstrap() {
     ['src/main.tsx', "profileCheckpoint('action_handler_start');", 'action_handler_start'],
     ['src/main.tsx', "profileCheckpoint('action_tools_loaded');", 'action_tools_loaded'],
     ['src/main.tsx', "profileCheckpoint('action_before_setup');", 'action_before_setup'],
+    ['src/main.tsx', "    } = await import('./setup.js');", 'action_after_setup_import'],
+    ['src/main.tsx', "    const setupPromise = setup(preSetupCwd", 'action_call_setup'],
     ['src/main.tsx', "profileCheckpoint('action_after_setup');", 'action_after_setup'],
     ['src/main.tsx', "profileCheckpoint('action_commands_loaded');", 'action_commands_loaded'],
     ['src/main.tsx', "profileCheckpoint('action_mcp_configs_loaded');", 'action_mcp_configs_loaded'],
