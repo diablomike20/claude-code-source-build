@@ -512,6 +512,40 @@ function patchJarvisExternalProviderProMigration() {
     throw new Error('Reconstructed Pro migration changed; review provider-aware safety patch');
   }
   fs.writeFileSync(filePath, src.replace(oldImport, newImport).replace(oldCondition, newCondition), 'utf8');
+
+  const sonnetPath = path.join(workspaceRoot, 'src/migrations/migrateSonnet45ToSonnet46.ts');
+  const sonnet = fs.readFileSync(sonnetPath, 'utf8');
+  const sonnetCondition = "if (getAPIProvider() !== 'firstParty') {";
+  const sonnetImport = "import { getAPIProvider } from '../utils/model/providers.js'";
+  if (!sonnet.includes(sonnetCondition) || !sonnet.includes(sonnetImport)) {
+    throw new Error('Reconstructed Sonnet subscriber migration changed');
+  }
+  fs.writeFileSync(sonnetPath, sonnet
+    .replace(sonnetImport, newImport)
+    .replace(sonnetCondition,
+      "if (getAPIProvider() !== 'firstParty' || !isFirstPartyAnthropicBaseUrl()) {"), 'utf8');
+
+  const opusPath = path.join(workspaceRoot, 'src/migrations/migrateOpusToOpus1m.ts');
+  const opus = fs.readFileSync(opusPath, 'utf8');
+  const opusCondition = 'if (!isOpus1mMergeEnabled()) {';
+  const opusImport = "import { logEvent } from '../services/analytics/index.js'";
+  if (!opus.includes(opusCondition) || !opus.includes(opusImport)) {
+    throw new Error('Reconstructed Opus subscription migration changed');
+  }
+  fs.writeFileSync(opusPath, opus
+    .replace(opusImport, opusImport + "\\nimport { isFirstPartyAnthropicBaseUrl } from '../utils/model/providers.js'")
+    .replace(opusCondition,
+      'if (!isFirstPartyAnthropicBaseUrl() || !isOpus1mMergeEnabled()) {'), 'utf8');
+
+  const legacyPath = path.join(workspaceRoot, 'src/migrations/migrateLegacyOpusToCurrent.ts');
+  const legacy = fs.readFileSync(legacyPath, 'utf8');
+  if (!legacy.includes(sonnetCondition) || !legacy.includes(sonnetImport)) {
+    throw new Error('Reconstructed legacy Opus migration changed');
+  }
+  fs.writeFileSync(legacyPath, legacy
+    .replace(sonnetImport, newImport)
+    .replace(sonnetCondition,
+      "if (getAPIProvider() !== 'firstParty' || !isFirstPartyAnthropicBaseUrl()) {"), 'utf8');
 }
 
 function patchJarvisCliUnhandledStartup() {
