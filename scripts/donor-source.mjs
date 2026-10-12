@@ -20,7 +20,7 @@ export const DONOR_ALLOWLIST = Object.freeze([
 ]);
 
 const MODULE_GROUPS = Object.freeze([
-  ['PROACTIVE/KAIROS', ['src/proactive/index']],
+  ['PROACTIVE/KAIROS', ['src/proactive/index', 'src/services/sessionTranscript/sessionTranscript']],
   ['EXPERIMENTAL_SKILL_SEARCH prefetch', ['src/services/skillSearch/prefetch']],
   ['HISTORY_SNIP', ['src/services/compact/snipProjection', 'src/services/compact/snipCompact']],
   ['CONTEXT_COLLAPSE', ['src/services/contextCollapse/index']],
