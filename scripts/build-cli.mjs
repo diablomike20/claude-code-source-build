@@ -533,7 +533,7 @@ function patchJarvisExternalProviderProMigration() {
     throw new Error('Reconstructed Opus subscription migration changed');
   }
   fs.writeFileSync(opusPath, opus
-    .replace(opusImport, opusImport + "\\nimport { isFirstPartyAnthropicBaseUrl } from '../utils/model/providers.js'")
+    .replace(opusImport, opusImport + "\nimport { isFirstPartyAnthropicBaseUrl } from '../utils/model/providers.js'")
     .replace(opusCondition,
       'if (!isFirstPartyAnthropicBaseUrl() || !isOpus1mMergeEnabled()) {'), 'utf8');
 
